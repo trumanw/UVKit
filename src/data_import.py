@@ -133,13 +133,13 @@ class DataImporter:
         return processed_data
     
     def get_data_preview(self, data: List[SpectralData], 
-                        max_rows: int = 10) -> pd.DataFrame:
+                        max_rows: int = None) -> pd.DataFrame:
         """
         获取数据预览
         
         Args:
             data: 光谱数据列表
-            max_rows: 最大显示行数
+            max_rows: 最大显示行数，None表示显示全部数据
             
         Returns:
             预览数据框
@@ -148,10 +148,16 @@ class DataImporter:
             return pd.DataFrame()
         
         # 创建预览数据框
-        preview_data = {'Wavelength': data[0].wavelengths[:max_rows]}
-        
-        for spectrum in data:
-            preview_data[spectrum.experiment_id] = spectrum.absorbances[:max_rows]
+        if max_rows is None:
+            # 显示全部数据
+            preview_data = {'Wavelength': data[0].wavelengths}
+            for spectrum in data:
+                preview_data[spectrum.experiment_id] = spectrum.absorbances
+        else:
+            # 显示指定行数
+            preview_data = {'Wavelength': data[0].wavelengths[:max_rows]}
+            for spectrum in data:
+                preview_data[spectrum.experiment_id] = spectrum.absorbances[:max_rows]
         
         return pd.DataFrame(preview_data)
     
@@ -234,7 +240,7 @@ def display_data_preview(data: List[SpectralData]):
         st.metric("数据点数", stats['data_shape']['wavelengths'])
     
     # 显示数据表格
-    preview_df = importer.get_data_preview(data, max_rows=10)
+    preview_df = importer.get_data_preview(data, max_rows=None)  # 显示全部数据
     st.dataframe(preview_df, use_container_width=True)
     
     # 删除实验列表显示，让界面更紧凑
