@@ -10,7 +10,7 @@ from scipy.stats import pearsonr
 import streamlit as st
 from .utils import (
     SpectralData, SimilarityResult, SimilarityMethod, 
-    ValidationResult, interpolate_spectra
+    ValidationResult, interpolate_spectra, MultiReferenceSimilarityResult
 )
 
 
@@ -188,6 +188,50 @@ class SimilarityAnalyzer:
             pearson_scores=pearson_scores,
             experiment_ids=[s.experiment_id for s in spectra],
             reference_id=reference.experiment_id
+        )
+        
+        return result
+    
+    def batch_calculate_multi_reference(self, spectra: List[SpectralData], 
+                                       references: List[SpectralData]) -> 'MultiReferenceSimilarityResult':
+        """
+        批量计算所有三种相似度算法（多参考光谱版本）
+        
+        Args:
+            spectra: 光谱数据列表
+            references: 参考光谱列表
+            
+        Returns:
+            包含三种算法结果的多参考光谱相似度结果对象
+        """
+        if not spectra:
+            raise ValueError("没有光谱数据可供分析")
+        
+        if not references:
+            raise ValueError("没有参考光谱可供分析")
+        
+        # 初始化结果数组 (references × spectra)
+        num_references = len(references)
+        num_spectra = len(spectra)
+        
+        sam_scores = np.zeros((num_references, num_spectra))
+        cosine_scores = np.zeros((num_references, num_spectra))
+        pearson_scores = np.zeros((num_references, num_spectra))
+        
+        # 为每个参考光谱计算相似度
+        for i, reference in enumerate(references):
+            # 计算三种算法的相似度
+            sam_scores[i] = self.calculate_similarity(spectra, reference, SimilarityMethod.SAM)
+            cosine_scores[i] = self.calculate_similarity(spectra, reference, SimilarityMethod.COSINE)
+            pearson_scores[i] = self.calculate_similarity(spectra, reference, SimilarityMethod.PEARSON)
+        
+        # 创建结果对象
+        result = MultiReferenceSimilarityResult(
+            sam_scores=sam_scores,
+            cosine_scores=cosine_scores,
+            pearson_scores=pearson_scores,
+            experiment_ids=[s.experiment_id for s in spectra],
+            reference_ids=[r.experiment_id for r in references]
         )
         
         return result
@@ -374,3 +418,23 @@ def select_reference_spectrum(spectra: List[SpectralData]) -> Optional[SpectralD
         return next(s for s in spectra if s.experiment_id == selected_id)
     
     return None
+
+
+def select_reference_spectra(spectra: List[SpectralData], max_selections: int = 10) -> List[SpectralData]:
+    """选择多个参考光谱"""
+    if not spectra:
+        return []
+    
+    experiment_ids = [s.experiment_id for s in spectra]
+    
+    selected_ids = st.multiselect(
+        "选择参考光谱（可多选）",
+        experiment_ids,
+        help="选择作为相似度计算基准的参考光谱（可选择多个）",
+        max_selections=max_selections
+    )
+    
+    if selected_ids:
+        return [s for s in spectra if s.experiment_id in selected_ids]
+    
+    return []

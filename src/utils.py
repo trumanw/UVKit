@@ -75,6 +75,44 @@ class SimilarityResult:
 
 
 @dataclass
+class MultiReferenceSimilarityResult:
+    """多参考光谱相似度计算结果"""
+    sam_scores: np.ndarray  # 2D array: references × spectra
+    cosine_scores: np.ndarray  # 2D array: references × spectra
+    pearson_scores: np.ndarray  # 2D array: references × spectra
+    experiment_ids: List[str]
+    reference_ids: List[str]
+    
+    def get_score(self, method: SimilarityMethod) -> np.ndarray:
+        """获取指定方法的相似度分数"""
+        if method == SimilarityMethod.SAM:
+            return self.sam_scores
+        elif method == SimilarityMethod.COSINE:
+            return self.cosine_scores
+        elif method == SimilarityMethod.PEARSON:
+            return self.pearson_scores
+        else:
+            raise ValueError(f"不支持的相似度方法: {method}")
+    
+    def get_result_for_reference(self, reference_id: str) -> Optional[SimilarityResult]:
+        """获取指定参考光谱的相似度结果"""
+        if reference_id not in self.reference_ids:
+            return None
+        
+        # Find the index of the reference
+        ref_index = self.reference_ids.index(reference_id)
+        
+        # Create a standard SimilarityResult for this reference
+        return SimilarityResult(
+            sam_scores=self.sam_scores[ref_index],
+            cosine_scores=self.cosine_scores[ref_index],
+            pearson_scores=self.pearson_scores[ref_index],
+            experiment_ids=self.experiment_ids,
+            reference_id=reference_id
+        )
+
+
+@dataclass
 class FilterSettings:
     """筛选设置"""
     wavelength_min: Optional[float] = None

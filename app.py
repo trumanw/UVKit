@@ -12,8 +12,8 @@ from typing import List, Optional
 
 # 导入自定义模块
 from src.data_import import DataImporter, upload_file_widget, display_data_preview
-from src.similarity import SimilarityAnalyzer, select_reference_spectrum
-from src.utils import SpectralData, SimilarityMethod
+from src.similarity import SimilarityAnalyzer, select_reference_spectrum, select_reference_spectra
+from src.utils import SpectralData, SimilarityMethod, MultiReferenceSimilarityResult
 
 # 页面配置
 st.set_page_config(
@@ -33,6 +33,8 @@ def main():
         st.session_state.spectral_data = None
     if 'similarity_results' not in st.session_state:
         st.session_state.similarity_results = None
+    if 'multi_similarity_results' not in st.session_state:
+        st.session_state.multi_similarity_results = None
     
     # 侧边栏
     with st.sidebar:
@@ -138,47 +140,85 @@ def display_similarity_tab():
     st.header("🔍 相似度分析")
     
     if st.session_state.spectral_data:
-        # 选择参考光谱
-        reference_spectrum = select_reference_spectrum(st.session_state.spectral_data)
+        # 选择参考光谱（支持多选）
+        reference_spectra = select_reference_spectra(st.session_state.spectral_data)
         
-        if reference_spectrum:
-            st.success(f"✅ 已选择参考光谱: {reference_spectrum.experiment_id}")
+        if reference_spectra:
+            if len(reference_spectra) == 1:
+                st.success(f"✅ 已选择参考光谱: {reference_spectra[0].experiment_id}")
+            else:
+                st.success(f"✅ 已选择 {len(reference_spectra)} 个参考光谱: {', '.join([r.experiment_id for r in reference_spectra])}")
             
             if st.button("🚀 开始相似度分析", type="primary"):
                 with st.spinner("正在计算相似度..."):
                     # 创建分析器
                     analyzer = SimilarityAnalyzer()
                     
-                    # 执行批量计算
-                    similarity_results = analyzer.batch_calculate(
-                        st.session_state.spectral_data, 
-                        reference_spectrum
-                    )
+                    if len(reference_spectra) == 1:
+                        # 单个参考光谱的情况，使用原有方法
+                        similarity_results = analyzer.batch_calculate(
+                            st.session_state.spectral_data, 
+                            reference_spectra[0]
+                        )
+                        st.session_state.similarity_results = similarity_results
+                        
+                        # 显示结果
+                        st.subheader("分析结果")
+                        results_df = pd.DataFrame({
+                            '实验ID': similarity_results.experiment_ids,
+                            'SAM相似度': similarity_results.sam_scores,
+                            '余弦相似度': similarity_results.cosine_scores,
+                            '皮尔逊相关系数': similarity_results.pearson_scores
+                        })
+                        st.dataframe(results_df, use_container_width=True)
+                        
+                        # 导出相似度结果功能
+                        st.subheader("📤 导出相似度结果")
+                        csv_results = results_df.to_csv(index=False)
+                        st.download_button(
+                            label="下载相似度结果CSV",
+                            data=csv_results,
+                            file_name="similarity_results.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        # 多个参考光谱的情况，使用新方法
+                        multi_similarity_results = analyzer.batch_calculate_multi_reference(
+                            st.session_state.spectral_data, 
+                            reference_spectra
+                        )
+                        st.session_state.multi_similarity_results = multi_similarity_results
+                        
+                        # 显示结果（每个参考光谱一个标签页）
+                        st.subheader("分析结果")
+                        reference_tabs = st.tabs([f"参考: {ref_id}" for ref_id in multi_similarity_results.reference_ids])
+                        
+                        for i, (ref_id, tab) in enumerate(zip(multi_similarity_results.reference_ids, reference_tabs)):
+                            with tab:
+                                # 获取该参考光谱的结果
+                                ref_result = multi_similarity_results.get_result_for_reference(ref_id)
+                                
+                                st.markdown(f"### 参考光谱: {ref_id}")
+                                results_df = pd.DataFrame({
+                                    '实验ID': ref_result.experiment_ids,
+                                    'SAM相似度': ref_result.sam_scores,
+                                    '余弦相似度': ref_result.cosine_scores,
+                                    '皮尔逊相关系数': ref_result.pearson_scores
+                                })
+                                st.dataframe(results_df, use_container_width=True)
+                                
+                                # 导出该参考光谱的相似度结果
+                                csv_results = results_df.to_csv(index=False)
+                                st.download_button(
+                                    label=f"下载 {ref_id} 相似度结果CSV",
+                                    data=csv_results,
+                                    file_name=f"similarity_results_{ref_id}.csv",
+                                    mime="text/csv"
+                                )
                     
-                    st.session_state.similarity_results = similarity_results
                     st.success("✅ 相似度分析完成")
-                    
-                    # 显示结果
-                    st.subheader("分析结果")
-                    results_df = pd.DataFrame({
-                        '实验ID': similarity_results.experiment_ids,
-                        'SAM相似度': similarity_results.sam_scores,
-                        '余弦相似度': similarity_results.cosine_scores,
-                        '皮尔逊相关系数': similarity_results.pearson_scores
-                    })
-                    st.dataframe(results_df, use_container_width=True)
-                    
-                    # 导出相似度结果功能
-                    st.subheader("📤 导出相似度结果")
-                    csv_results = results_df.to_csv(index=False)
-                    st.download_button(
-                        label="下载相似度结果CSV",
-                        data=csv_results,
-                        file_name="similarity_results.csv",
-                        mime="text/csv"
-                    )
         else:
-            st.info("ℹ️ 请选择一个参考光谱进行分析")
+            st.info("ℹ️ 请选择一个或多个参考光谱进行分析")
 
 # 删除display_export_tab函数，因为功能已经合并到其他标签页
 
